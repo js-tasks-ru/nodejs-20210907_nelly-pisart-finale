@@ -11,9 +11,10 @@ server.on('request', (req, res) => {
 
   const filepath = path.join(__dirname, 'files', pathname);
 
-  if (pathname.includes('/') || pathname.includes('...')){
-    res.statusCode = 400;    
+  if (pathname.includes('/') || pathname.includes('...')) {
+    res.statusCode = 400;
     res.end('Nested folders are not supported');
+    return;
   }
 
   switch (req.method) {
@@ -24,13 +25,13 @@ server.on('request', (req, res) => {
       stream.on('error', (error) => {
         if (error.code === 'ENOENT') {
           res.statusCode = 404;
-          res.end('File not found');          
+          res.end('File not found');
         } else {
           res.statusCode = 500;
           res.end('Internal error');
-        }        
+        }
         return;
-      })
+      });
 
       break;
 

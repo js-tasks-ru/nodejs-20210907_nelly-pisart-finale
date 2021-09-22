@@ -14,6 +14,7 @@ server.on('request', (req, res) => {
   if (pathname.includes('/')) {
     res.statusCode = 400;
     res.end('Nested folders are no supported');
+    return;
   }
 
   switch (req.method) {
