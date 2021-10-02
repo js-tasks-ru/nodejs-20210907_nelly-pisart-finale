@@ -1,8 +1,8 @@
 const url = require('url');
 const http = require('http');
 const path = require('path');
+const LimitSizeStream = require('./LimitSizeStream');
 const fs = require('fs');
-const LimitedSizeStream = require('./LimitSizeStream');
 
 const server = new http.Server();
 
@@ -10,54 +10,62 @@ server.on('request', (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname.slice(1);
 
-  const filepath = path.join(__dirname, 'files', pathname);
+  function writeFile() {
+    if (pathname.includes('/') || pathname.includes('..')) {
+      res.statusCode = 400;
+      res.end('Nested paths are not allowed');
+      return;
+    }
 
-  if (pathname.includes('/') || pathname.includes('...')) {
-    res.statusCode = 400;
-    res.end('Nested folders are no supported');
+    const filepath = path.join(__dirname, 'files', pathname);
+    const limitSizeStream = new LimitSizeStream({limit: 1000000});
+    const outStream = fs.createWriteStream(filepath, {
+      flags: 'wx',
+    });
+
+    req.pipe(limitSizeStream)
+        .pipe(outStream);
+
+    outStream.on('finish', () => {
+      res.statusCode = 201;
+      res.end('Data was saved');
+    });
+
+    outStream.on('error', (err) => {
+      if (err.code === 'EEXIST') {
+        res.statusCode = 409;
+        res.end('File already exists');
+        return;
+      }
+      res.statusCode = 500;
+      res.end('Server error');
+    });
+
+    limitSizeStream.on('error', (err) => {
+      if (err.code === 'LIMIT_EXCEEDED') {
+        res.statusCode = 413;
+        res.end('File is too big!');
+      } else {
+        res.statusCode = 500;
+        res.end('Server error');
+      }
+
+      outStream.destroy();
+      fs.unlink(filepath, (err) => {});
+    });
+
+    req.on('data', (chunk) => {});
+
+    req.on('aborted', () => {
+      limitSizeStream.destroy();
+      outStream.destroy();
+      fs.unlink(filepath, (err) => {});
+    });
   }
 
   switch (req.method) {
     case 'POST':
-      const stream = fs.createWriteStream(filepath, {
-        flags: 'wx',
-      });
-      const limitSizeStream = new LimitedSizeStream({ limit: 10 });
-
-      req.pipe(limitSizeStream).pipe(stream);
-
-      stream.on('finish', () => {
-        res.end('File saved');
-      })
-
-      limitSizeStream.on('error', (error) => {
-        if (error.code === 'LIMIT_EXCEEDED') {
-          res.statusCode = 413;
-          res.end('Large file');                    
-        } else {
-          res.statusCode = 500;
-          res.end('Internal error');  
-        }
-
-        stream.destroy();
-        fs.unlink(filepath, error => {});
-      })
-
-      stream.on('error', (error) => {
-        if (error.code === 'EEXIST') {
-          res.statusCode = 409;
-          res.end('File exists');
-        }
-        res.statusCode = 500;
-        res.end('Internal error');
-      })
-
-      req.on('aborted', () => {
-        stream.destroy();
-        limitSizeStream.destroy();
-        fs.unlink(filepath, error => {});
-      })
-
+      writeFile();
       break;
 
     default:
