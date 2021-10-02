@@ -45,10 +45,10 @@ server.on('request', (req, res) => {
       if (err.code === 'LIMIT_EXCEEDED') {
         res.statusCode = 413;
         res.end('File is too big!');
-      } else {
-        res.statusCode = 500;
-        res.end('Server error');
+        return;
       }
+      res.statusCode = 500;
+      res.end('Server error');
 
       outStream.destroy();
       fs.unlink(filepath, (err) => {});
